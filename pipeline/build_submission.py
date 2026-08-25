@@ -21,6 +21,16 @@ DATA = os.path.join(OUT, "data")
 USE_LLM = os.environ.get("USE_LLM", "0") == "1"   # bật LLM-branch cho câu hard-conditional (Modal endpoint)
 
 # AGENT-branch: dùng kết quả agentic decompose (chạy offline → agent_batch.json) cho câu AGG/COND.
+
+def _norm_q(t):
+    """So khop cau hoi bo qua khac biet vo nghia: khoang trang thua, hoa/thuong, dau cau cuoi."""
+    return _re_q.sub(" ", str(t or "")).strip().rstrip("?.").lower()
+
+
+_re_q = re.compile(r"\s+")
+# Dem cac cau ma tep agent co cung id nhung KHAC noi dung cau hoi — xem cho dung o duoi.
+AGENT_MISMATCH = []
+
 USE_AGENT = os.environ.get("USE_AGENT", "0") == "1"
 AGENT_RESULTS = {}
 if USE_AGENT:
@@ -36,6 +46,7 @@ if USE_AGENT:
     if not AGENT_RESULTS:
         raise SystemExit(f"[LOI] {_af} khong co muc nao dung duoc -> dung lai thay vi nop thieu cau.")
     print(f"[AGENT] nạp {len(AGENT_RESULTS)} câu từ {_af}")
+
 elif os.path.exists(os.path.join(os.path.dirname(__file__), "agent_full_v2.json")):
     # Quên USE_AGENT=1 thì bản nộp im lặng MẤT 211 câu hard-conditional (đã suýt xảy ra 07/08).
     print("[CANH BAO] co agent_full_v2.json nhung USE_AGENT=0 -> mat nhanh agent.\n"
@@ -797,8 +808,15 @@ def build():
                 ans += 1; continue
         # PHASE 4a — AGENT branch: câu hard-conditional dùng kết quả agentic decompose (offline).
         # answer + pandas + evidence CSV từ agent; retrieval (docs/tables) GIỮ deterministic (thế mạnh).
-        if USE_AGENT and qid in AGENT_RESULTS:
-            ar = AGENT_RESULTS[qid]
+        # BAY CHET NGUOI CHO VONG PRIVATE: neu khop CHI bang id thi mot tep agent CU (sinh cho bo
+        # cau hoi khac) van "khop" het — 396 cau private se nhan dap an cua 396 cau PUBLIC hoan
+        # toan khac nhau, sai im lang, khong mot canh bao nao. Id o ca hai bo deu chay 1..N nen
+        # trung id la CHAC CHAN. => doi chieu ca NOI DUNG cau hoi; lech thi bo qua va dem lai.
+        ar = AGENT_RESULTS.get(qid) if USE_AGENT else None
+        if ar is not None and _norm_q(ar.get("question")) != _norm_q(qt):
+            AGENT_MISMATCH.append(qid)
+            ar = None
+        if ar is not None:
             if ar.get("pandas") and ar.get("refs"):
                 acsv = f"agent_{qid}.csv"
                 if acsv not in written:
@@ -912,6 +930,20 @@ def build():
         e["answer"] = round(float(v), 2)
         if e.get("pandas_query"):
             e["pandas_query"] = f"round({e['pandas_query']}, 2)"
+    # DUNG HAN neu tep agent khong khop bo cau hoi dang chay. Nguong 5%: vai cau lech co the do
+    # BTC sua chinh ta cau hoi giua hai lan phat hanh, con lech hang loat nghia la DUNG NHAM TEP —
+    # gan nhu chac chan la dem tep agent cua bo PUBLIC sang chay cho bo PRIVATE. Tha khong co ban
+    # nop con hon co mot ban nop tron dap an cua bo cau hoi khac.
+    if USE_AGENT and AGENT_MISMATCH:
+        _r = len(AGENT_MISMATCH) / max(1, len(AGENT_RESULTS))
+        _msg = (f"[AGENT] {len(AGENT_MISMATCH)}/{len(AGENT_RESULTS)} muc trong {_af} co trung id "
+                f"nhung KHAC noi dung cau hoi ({_r:.0%}). Vi du id: {AGENT_MISMATCH[:8]}")
+        if _r > 0.05:
+            raise SystemExit(
+                _msg + "\n       => Tep agent KHONG thuoc bo cau hoi nay. "
+                       "Sinh lai bang `python agent_strands.py` truoc khi dung bai nop.")
+        print("[CANH BAO] " + _msg + " -> da bo qua nhanh agent cho nhung cau do.")
+
     with open(os.path.join(OUT, "submission.json"), "w", encoding="utf-8") as f:
         json.dump(entries, f, ensure_ascii=False)
     # dong ZIP: submission.json + data/ o cap ngoai cung
