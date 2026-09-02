@@ -484,6 +484,16 @@ CTX_W=float(_os.environ.get("CTX_W","0"))
 #   chỉ trọng tài thật phân xử được. Nhưng +0.004 là nhỏ, ĐỪNG suy rộng thành "hướng này còn dư địa".
 CONT_IN =float(_os.environ.get("CONT_IN","0.25"))
 CONT_OF =float(_os.environ.get("CONT_OF","0.05"))
+# TIE_LONG: khi HOA DIEM tuyet doi thi nhan DAI thang thay vi nhan NGAN.
+# Ly do: diem `ov` da la F1 nen da PHAT token thua cua nhan dai roi; uu tien nhan ngan o khoa phu
+# la phat lan thu hai tren cung mot truc. Do duoc (AGENTS.md 18/08): o 19 cau hoa tuyet doi, cach
+# hien tai trung 0/19 — te hon boc tham (~25%), tuc tin hieu dang bi dung NGUOC dau.
+# KET QUA — DA DO BANG GOLD THAT, AM (private sub 3998, 01/09/2026): TIE_LONG=1 doi 56/1012
+# dap an ma diem GIU NGUYEN 0.3320 = 168/506, rong dung 0 cau. Ghep voi 0/19 tren dev:
+# nhan ngan trung 0, nhan dai cung trung 0 => DO DAI NHAN KHONG MANG TIN HIEU o vung hoa,
+# khong phai bi dung nguoc dau. DUNG THU LAI moi bien the tie-break theo do dai nhan.
+# Mac dinh "0" = hanh vi cu, de ban 0.3320 van dung lai trung byte.
+TIE_LONG=_os.environ.get("TIE_LONG","0")=="1"
 def score_cands(rows, target, qdir=None):
     """Chấm mọi dòng theo target → [(ov,row)] đã sắp xếp giảm dần. Tách ra từ locate() để
     locate_alt() dùng lại đúng cùng cách chấm — KHÔNG đổi hành vi locate."""
@@ -512,7 +522,7 @@ def score_cands(rows, target, qdir=None):
         if qdir=="cuoi" and ("dau nam" in ls or "dau ky" in ls): ov-=0.5
         if qdir=="dau" and ("cuoi nam" in ls or "cuoi ky" in ls): ov-=0.5
         if ov>0: cands.append((ov,r))
-    cands.sort(key=lambda x:(-x[0], len(x[1]["label"])))
+    cands.sort(key=lambda x:(-x[0], -len(x[1]["label"]) if TIE_LONG else len(x[1]["label"])))
     return cands
 
 def locate_alt(rows, target, qdir=None, exclude=(), rel=0.75, k=2):
