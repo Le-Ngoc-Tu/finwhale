@@ -11,9 +11,18 @@ Vi sao ton tai song song voi build_corpus.py:
 
 Chay:
   python pipeline/lookup_live.py --ticker HPG --year 2024 --query "Lai tien gui"
-  python pipeline/lookup_live.py --ticker VJC --year 2018 --doctype separate --query "..." --json
+  python pipeline/lookup_live.py --ticker VJC --year 2018 --doctype separate --query "..."
 """
 import os, sys, json, argparse
+
+# Console Windows mac dinh la cp1252, khong ma hoa noi tieng Viet co dau: chay dung lenh ghi o
+# docstring tren mot console sach thi script chet o dong in ket qua bang UnicodeEncodeError.
+# App goi qua spawn co dat PYTHONIOENCODING=utf-8 nen duong do khong sao — day la de chay tay.
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):        # stream bi thay the / khong ho tro
+        pass
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pipeline as P
